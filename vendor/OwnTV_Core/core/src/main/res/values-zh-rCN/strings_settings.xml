@@ -159,7 +159,9 @@
     <string name="settings_quick_channel_numbers">频道编号</string>
     <string name="settings_quick_prefer_sdr">优先 SDR</string>
     <string name="settings_quick_autoplay">自动播放</string>
-    <string name="settings_quick_check_update">检查更新</string>
+    <string name="settings_quick_auto_update">自动检查软件更新</string>
+    <string name="settings_software_update">软件更新</string>
+    <string name="settings_software_update_description">查看简播 TV 最新版本并安装更新</string>
     <string name="settings_language">语言</string>
     <string name="settings_language_description">应用显示语言</string>
     <string name="settings_language_system_default">系统默认</string>

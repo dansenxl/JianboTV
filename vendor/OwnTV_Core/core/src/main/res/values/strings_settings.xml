@@ -328,6 +328,9 @@
     <string name="settings_quick_autoplay">Auto-play</string>
     <!-- Translators: Quick action label to check for app updates. -->
     <string name="settings_quick_check_update">Check for update</string>
+    <string name="settings_quick_auto_update">Automatic update check</string>
+    <string name="settings_software_update">Software update</string>
+    <string name="settings_software_update_description">Check the latest Jianbo TV version and install updates</string>
     <!-- Translators: Row-menu action that adds the chosen setting to the Quick group. -->
     <string name="settings_row_menu_pin">Pin to Quick</string>
     <!-- Translators: Row-menu action that takes the chosen setting back out of the Quick group. -->

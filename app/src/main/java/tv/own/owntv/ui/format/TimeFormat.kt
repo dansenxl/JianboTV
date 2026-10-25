@@ -1,7 +1,7 @@
 package tv.own.owntv.ui.format
 
-import android.content.Context
 import android.text.format.DateFormat
+import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
@@ -19,10 +19,11 @@ internal data class DateFormatterKey(
 
 @Composable
 fun rememberSystemTimeFormatter(): (Long) -> String {
-    val context = LocalContext.current
     val configuration = LocalConfiguration.current
-    val formatter = remember(context, configuration) {
-        DateFormat.getTimeFormat(context)
+    val locale = configuration.locales[0]
+    val timeZone = TimeZone.getDefault()
+    val formatter = remember(locale, timeZone.id) {
+        SimpleDateFormat("HH:mm", locale).apply { this.timeZone = timeZone }
     }
     return remember(formatter) {
         val date = Date(0L)
@@ -35,7 +36,8 @@ fun rememberSystemTimeFormatter(): (Long) -> String {
 }
 
 fun formatSystemTime(context: Context, ms: Long): String {
-    return DateFormat.getTimeFormat(context).format(Date(ms))
+    val locale = context.resources.configuration.locales[0]
+    return SimpleDateFormat("HH:mm", locale).apply { timeZone = TimeZone.getDefault() }.format(Date(ms))
 }
 
 @Composable
@@ -84,14 +86,14 @@ fun formatBestDateTime(
     dateSkeleton: String,
     ms: Long,
 ): String {
-    val skeleton = combinedDateTimeSkeleton(dateSkeleton, DateFormat.is24HourFormat(context))
+    val skeleton = combinedDateTimeSkeleton(dateSkeleton)
     return formatBestDate(context, skeleton, ms)
 }
 
 /** The date part of [dateSkeleton] plus the time in the device's own hour cycle. Any time fields the
  *  caller left in are dropped first: two hour fields ("jm" + "Hm") make getBestDateTimePattern throw. */
-internal fun combinedDateTimeSkeleton(dateSkeleton: String, is24Hour: Boolean): String =
-    dateSkeleton.filterNot { it in TIME_FIELDS } + if (is24Hour) "Hm" else "hm"
+internal fun combinedDateTimeSkeleton(dateSkeleton: String): String =
+    dateSkeleton.filterNot { it in TIME_FIELDS } + "Hm"
 
 /** Skeleton letters for hour, minute, second and day period. */
 private const val TIME_FIELDS = "hHkKjJCmsabB"
@@ -101,6 +103,7 @@ private fun bestDateFormatter(
     skeleton: String,
     timeZone: TimeZone,
 ): SimpleDateFormat {
-    val pattern = DateFormat.getBestDateTimePattern(locale, skeleton)
+    val normalizedSkeleton = if (skeleton.any { it in TIME_FIELDS }) combinedDateTimeSkeleton(skeleton) else skeleton
+    val pattern = DateFormat.getBestDateTimePattern(locale, normalizedSkeleton)
     return SimpleDateFormat(pattern, locale).apply { this.timeZone = timeZone }
 }

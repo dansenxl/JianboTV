@@ -14,23 +14,22 @@ class TimeFormatTest {
     private val instant = Date(1_704_110_400_000L) // 2024-01-01 12:00:00 UTC
 
     @Test
-    fun `12-hour and 24-hour patterns produce different hour cycles`() {
+    fun `display time policy uses 24-hour cycle for every locale`() {
         val twelveHour = SimpleDateFormat("h:mm a", Locale.US).apply { timeZone = utc }.format(instant)
         val twentyFourHour = SimpleDateFormat("HH:mm", Locale.US).apply { timeZone = utc }.format(instant)
 
         assertTrue(twelveHour.contains("PM"))
         assertEquals("12:00", twentyFourHour)
-        assertEquals("dMMMhm", combinedDateTimeSkeleton("dMMM", is24Hour = false))
-        assertEquals("dMMMHm", combinedDateTimeSkeleton("dMMM", is24Hour = true))
+        assertEquals("dMMMHm", combinedDateTimeSkeleton("dMMM"))
     }
 
     @Test
     fun `a time already in the date skeleton is replaced, never doubled`() {
         // "dMMMjm" + "Hm" was "dMMMjmHm": Android rejects two hour fields and the Error log and Backup
         // screens crashed on every 24-hour device.
-        assertEquals("dMMMHm", combinedDateTimeSkeleton("dMMMjm", is24Hour = true))
-        assertEquals("dMMMyyyyhm", combinedDateTimeSkeleton("dMMMyyyyjm", is24Hour = false))
-        assertEquals("EEEdMMMHm", combinedDateTimeSkeleton("EEEdMMMahmss", is24Hour = true))
+        assertEquals("dMMMHm", combinedDateTimeSkeleton("dMMMjm"))
+        assertEquals("dMMMyyyyHm", combinedDateTimeSkeleton("dMMMyyyyjm"))
+        assertEquals("EEEdMMMHm", combinedDateTimeSkeleton("EEEdMMMahmss"))
     }
 
     @Test

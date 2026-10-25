@@ -93,6 +93,7 @@
     <string name="home_row_favorite_movies_description">您收藏的电影</string>
     <string name="home_row_favorite_series_description">您收藏的剧集</string>
     <string name="update_title">应用更新</string>
+    <string name="update_version_chip">v%1$s</string>
     <string name="update_current_version">当前版本：v<xliff:g id="version">%1$s</xliff:g></string>
     <string name="update_last_checked">最近检查：<xliff:g id="time">%1$s</xliff:g></string>
     <string name="update_never_checked">尚未检查</string>
@@ -114,6 +115,7 @@
     <string name="update_later">稍后</string>
     <string name="update_now">立即更新</string>
     <string name="update_try_again">重试</string>
+    <string name="update_check_again">立即检查</string>
     <string name="update_failed_check">无法检查更新。</string>
     <string name="update_failed_check_http">检查更新时，更新服务器返回了 HTTP <xliff:g id="code">%1$s</xliff:g>。</string>
     <string name="update_no_compatible_apk">此版本中未找到适用于此设备的更新包。</string>

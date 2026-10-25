@@ -198,7 +198,7 @@ fun MetadataSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 if (tier == MetadataConfig.Tier.DEFAULT_WORKER) {
                     Text(stringResource(R.string.settings_metadata_shared_worker_description), style = stageText(16, 500), color = StageColors.Muted, modifier = Modifier.padding(top = 8.mpx))
                     if (b != null) {
-                        val refill = android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(b.resetAtMs))
+                        val refill = tv.own.owntv.ui.format.formatSystemTime(context, b.resetAtMs)
                         Text(
                             stringResource(R.string.settings_allowance_day) + dotSeparator() +
                                 pluralStringResource(R.plurals.settings_allowance_value, b.remainingDay, b.remainingDay, b.limitDay) +

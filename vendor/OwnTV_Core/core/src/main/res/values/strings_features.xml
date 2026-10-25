@@ -247,6 +247,7 @@
 
     <!-- Translators: Screen title for the app update dialog. -->
     <string name="update_title">App update</string>
+    <string name="update_version_chip">v%1$s</string>
     <string name="update_current_version">Current version: v<xliff:g id="version">%1$s</xliff:g></string>
     <string name="update_last_checked">Last checked: <xliff:g id="time">%1$s</xliff:g></string>
     <string name="update_never_checked">never</string>
@@ -278,6 +279,7 @@
     <string name="update_now">Update now</string>
     <!-- Translators: Button to retry checking for updates. -->
     <string name="update_try_again">Try again</string>
+    <string name="update_check_again">Check now</string>
     <!-- Translators: Error when the update check fails due to a network issue. -->
     <string name="update_failed_check">Couldn\'t check for updates.</string>
     <!-- Translators: Error when the update server returns an HTTP error. "code" is the HTTP status code such as 404. Keep this as a full sentence. -->

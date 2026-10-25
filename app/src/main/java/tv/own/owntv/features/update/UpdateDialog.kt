@@ -80,9 +80,13 @@ fun UpdateDialog(onDismiss: () -> Unit, checkOnOpen: Boolean = false) {
         buttons = if (busy) null else ({
             when (val s = state) {
                 UpdateManager.State.UpToDate ->
-                    StageButton(stringResource(R.string.settings_close), onClick = onDismiss, height = 56.mpx, textSize = 19, tinted = true, modifier = Modifier.focusRequester(focus))
+                    {
+                        StageButton(stringResource(R.string.settings_close), onClick = onDismiss, height = 56.mpx, textSize = 19)
+                        StageButton(stringResource(R.string.update_check_again), onClick = { manager.check() }, height = 56.mpx, textSize = 19, tinted = true, modifier = Modifier.focusRequester(focus))
+                    }
                 is UpdateManager.State.Available -> {
                     StageButton(stringResource(R.string.update_later), onClick = onDismiss, height = 56.mpx, textSize = 19)
+                    StageButton(stringResource(R.string.update_check_again), onClick = { manager.check() }, height = 56.mpx, textSize = 19)
                     StageButton(stringResource(R.string.update_now), onClick = { manager.downloadAndInstall() }, icon = OwnTVIcon.DOWNLOADS, height = 56.mpx, textSize = 19, tinted = true, modifier = Modifier.focusRequester(focus))
                 }
                 is UpdateManager.State.Failed -> {
@@ -106,7 +110,7 @@ fun UpdateDialog(onDismiss: () -> Unit, checkOnOpen: Boolean = false) {
             style = stageText(16, 600), color = StageColors.Muted,
         )
         Text(
-            stringResource(R.string.update_last_checked, checkedAt?.let { java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it)) } ?: stringResource(R.string.update_never_checked)),
+            stringResource(R.string.update_last_checked, checkedAt?.let { tv.own.owntv.ui.format.formatBestDateTime(context, "yMMMd", it) } ?: stringResource(R.string.update_never_checked)),
             style = stageText(15, 400), color = StageColors.Dim,
             modifier = Modifier.padding(top = 4.mpx, bottom = 14.mpx),
         )

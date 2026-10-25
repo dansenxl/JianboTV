@@ -227,7 +227,7 @@ fun SettingsScreen(
     val zoomRowFocus = remember { FocusRequester() }
     val appIconRowFocus = remember { FocusRequester() }
     val popupSizeRowFocus = remember { FocusRequester() }
-    val updateRowFocus = remember { FocusRequester() }
+    val softwareUpdateFocus = remember { FocusRequester() }
     val catchupRowFocus = remember { FocusRequester() }
     val catchupSourcesRowFocus = remember { FocusRequester() }
     val epgOffsetRowFocus = remember { FocusRequester() }
@@ -492,8 +492,25 @@ fun SettingsScreen(
         ),
         RootRow(
             "quick_check_update", TileTone.SECONDARY, OwnTVIcon.DOWNLOADS,
-            title = stringResource(R.string.settings_quick_check_update),
+            title = stringResource(R.string.settings_quick_auto_update),
             chip = stringResource(if (updateCheckOnStart) R.string.common_on else R.string.common_off),
+            chipTone = if (updateCheckOnStart) TileTone.PRIMARY else TileTone.SECONDARY,
+            onClick = { settingsVm.setUpdateCheckOnStart(!updateCheckOnStart) },
+        ),
+        RootGroup("group_updates", stringResource(R.string.settings_software_update), OwnTVIcon.REFRESH, stringResource(R.string.settings_software_update_description)),
+        RootRow(
+            "software_update", TileTone.PRIMARY, OwnTVIcon.REFRESH,
+            title = stringResource(R.string.settings_software_update),
+            desc = stringResource(R.string.settings_software_update_description),
+            chip = stringResource(R.string.update_version_chip, tv.own.owntv.BuildConfig.VERSION_NAME),
+            focus = softwareUpdateFocus,
+            onClick = { saveScroll(); dialogReturn = softwareUpdateFocus; showUpdate = true },
+        ),
+        RootRow(
+            "software_update_auto", TileTone.SECONDARY, OwnTVIcon.CLOCK,
+            title = stringResource(R.string.settings_update_startup),
+            desc = stringResource(R.string.settings_update_startup_description),
+            chip = if (updateCheckOnStart) stringResource(R.string.common_on) else stringResource(R.string.common_off),
             chipTone = if (updateCheckOnStart) TileTone.PRIMARY else TileTone.SECONDARY,
             onClick = { settingsVm.setUpdateCheckOnStart(!updateCheckOnStart) },
         ),
@@ -774,20 +791,6 @@ fun SettingsScreen(
             onClick = { saveScroll(); dialogReturn = startupRowFocus; showStartup = true },
         ),
         RootRow(
-            "check_updates", TileTone.PRIMARY, OwnTVIcon.REFRESH,
-            title = stringResource(R.string.settings_check_updates), desc = stringResource(R.string.settings_check_updates_description),
-            chip = "v${tv.own.owntv.BuildConfig.VERSION_NAME}",
-            focus = updateRowFocus,
-            onClick = { saveScroll(); dialogReturn = updateRowFocus; showUpdate = true },
-        ),
-        RootRow(
-            "update_startup", TileTone.SECONDARY, OwnTVIcon.REFRESH,
-            title = stringResource(R.string.settings_update_startup), desc = stringResource(R.string.settings_update_startup_description),
-            chip = if (updateCheckOnStart) stringResource(R.string.common_on) else stringResource(R.string.common_off),
-            chipTone = if (updateCheckOnStart) TileTone.PRIMARY else TileTone.SECONDARY,
-            onClick = { settingsVm.setUpdateCheckOnStart(!updateCheckOnStart) },
-        ),
-        RootRow(
             tabRowKey(SettingsTab.NETWORK), TileTone.SECONDARY, OwnTVIcon.NETWORK,
             heading = stringResource(R.string.settings_group_network),
             title = stringResource(R.string.common_proxy), desc = stringResource(R.string.settings_proxy_description),
@@ -1062,7 +1065,9 @@ fun SettingsScreen(
             SettingsSearchEntry(stringResource(R.string.settings_group_app), stringResource(R.string.settings_app_startup), stringResource(R.string.settings_search_keywords_startup), OwnTVIcon.POWER, TileTone.SECONDARY,
                 chip = startupLabel(startupMode)) { saveScroll(); dialogReturn = searchFieldFocus; showStartup = true },
             SettingsSearchEntry(stringResource(R.string.settings_group_app), stringResource(R.string.settings_check_updates), stringResource(R.string.settings_search_keywords_updates), OwnTVIcon.REFRESH, TileTone.PRIMARY,
-                chip = "v${tv.own.owntv.BuildConfig.VERSION_NAME}") { saveScroll(); dialogReturn = searchFieldFocus; showUpdate = true },
+                chip = stringResource(R.string.update_version_chip, tv.own.owntv.BuildConfig.VERSION_NAME)) { saveScroll(); dialogReturn = searchFieldFocus; showUpdate = true },
+            SettingsSearchEntry(stringResource(R.string.settings_software_update), stringResource(R.string.settings_software_update), stringResource(R.string.settings_search_keywords_updates), OwnTVIcon.REFRESH, TileTone.PRIMARY,
+                chip = stringResource(R.string.update_version_chip, tv.own.owntv.BuildConfig.VERSION_NAME)) { saveScroll(); dialogReturn = searchFieldFocus; showUpdate = true },
             SettingsSearchEntry(stringResource(R.string.settings_group_app), stringResource(R.string.settings_update_startup), stringResource(R.string.settings_search_keywords_update_auto), OwnTVIcon.REFRESH, TileTone.SECONDARY,
                 chip = if (updateCheckOnStart) stringResource(R.string.common_on) else stringResource(R.string.common_off), chipTone = if (updateCheckOnStart) TileTone.PRIMARY else TileTone.SECONDARY, showChevron = false) { settingsVm.setUpdateCheckOnStart(!updateCheckOnStart) },
         )
