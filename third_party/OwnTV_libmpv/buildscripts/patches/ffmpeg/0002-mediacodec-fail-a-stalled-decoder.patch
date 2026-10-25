@@ -1,0 +1,93 @@
+OwnTV: fail a MediaCodec decoder that stops both taking input and giving output.
+
+Why: the same Realtek decoder (see 0001) sometimes stops dead after the first frames of a catch-up
+stream. mediacodec_receive_frame() then loops forever by design ("try again if both input port and
+output port return EAGAIN") on mpv's core thread, so the player locks up and keeps the provider
+connection open, and every retry fails. Found with native stacks and /proc task sampling,
+2026-10-08.
+
+After 3 s with no input space and no output it now returns AVERROR_EXTERNAL and logs
+"MediaCodec stalled: ...". mpv counts it as a hardware decode failure and falls back to software
+(hwdec-software-fallback, default 3), so playback continues. The 3 s count only one unbroken
+stall: any frame out, any input space and every flush (seek, reload) start it over, so short
+normal pauses can never add up to a false failure (that would force 4K HDR onto software).
+
+TCL, NPO 1 catch-up: before, about 5 in 12 opens hung (and the app needed ~35 s to reach
+ExoPlayer); after, 11/11 played, 7 of them through this fallback, first picture as fast as the
+clean runs (~5.5 s), 1080p50 software with 0 dropped frames.
+
+Drop it only once FFmpeg bounds this loop itself. Test as for 0001.
+
+diff --git a/libavcodec/mediacodecdec.c b/libavcodec/mediacodecdec.c
+--- a/libavcodec/mediacodecdec.c
++++ b/libavcodec/mediacodecdec.c
+@@ -31,6 +31,7 @@
+ #include "libavutil/opt.h"
+ #include "libavutil/intreadwrite.h"
+ #include "libavutil/pixfmt.h"
++#include "libavutil/time.h"
+ #include "libavutil/internal.h"
+ 
+ #include "avcodec.h"
+@@ -59,8 +60,19 @@ typedef struct MediaCodecH264DecContext {
+     int use_ndk_codec;
+     // Ref. MediaFormat KEY_OPERATING_RATE
+     int operating_rate;
++
++    /* OwnTV: when the codec last stopped both taking input and giving output (0 = it is not). */
++    int64_t stalled_since;
+ } MediaCodecH264DecContext;
+ 
++/*
++ * OwnTV: how long the codec may refuse input and produce no output before decoding fails. Some
++ * vendor decoders (Realtek, seen on TCL Android TV) stop dead after the first frames of a stream;
++ * the "try again" loop below then never ends, and it runs on the player's core thread, so the whole
++ * player locks up. Failing instead lets the caller fall back to software decoding.
++ */
++#define MEDIACODEC_STALL_TIMEOUT_US (3 * 1000000)
++
+ static av_cold int mediacodec_decode_close(AVCodecContext *avctx)
+ {
+     MediaCodecH264DecContext *s = avctx->priv_data;
+@@ -502,6 +514,8 @@ static int mediacodec_receive_frame(AVCodecContext *avctx, AVFrame *frame)
+ 
+     /* poll for new frame */
+     ret = ff_mediacodec_dec_receive(avctx, s->ctx, frame, false);
++    if (ret >= 0)
++        s->stalled_since = 0;
+     if (ret != AVERROR(EAGAIN))
+         return ret;
+ 
+@@ -519,11 +533,23 @@ static int mediacodec_receive_frame(AVCodecContext *avctx, AVFrame *frame)
+                  * return EAGAIN, which violate the design.
+                  */
+                 if (ff_AMediaCodec_infoTryAgainLater(s->ctx->codec, index) &&
+-                    ret == AVERROR(EAGAIN))
++                    ret == AVERROR(EAGAIN)) {
++                    int64_t now = av_gettime_relative();
++                    if (!s->stalled_since)
++                        s->stalled_since = now;
++                    if (now - s->stalled_since > MEDIACODEC_STALL_TIMEOUT_US) {
++                        av_log(avctx, AV_LOG_ERROR,
++                               "MediaCodec stalled: no input space and no output for %d ms\n",
++                               (int)((now - s->stalled_since) / 1000));
++                        return AVERROR_EXTERNAL;
++                    }
+                     continue;
++                }
++                s->stalled_since = 0;
+                 return ret;
+             }
+             s->ctx->current_input_buffer = index;
++            s->stalled_since = 0;
+         }
+ 
+         /* try to flush any buffered packet data */
+@@ -574,6 +600,7 @@ static void mediacodec_decode_flush(AVCodecContext *avctx)
+     MediaCodecH264DecContext *s = avctx->priv_data;
+ 
+     av_packet_unref(&s->buffered_pkt);
++    s->stalled_since = 0;
+ 
+     ff_mediacodec_dec_flush(avctx, s->ctx);
+ }

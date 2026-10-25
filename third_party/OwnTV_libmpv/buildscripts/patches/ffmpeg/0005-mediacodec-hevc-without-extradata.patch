@@ -1,0 +1,34 @@
+OwnTV: open the HEVC MediaCodec decoder when the stream has no extradata, instead of aborting.
+
+Why: hevc_set_extradata passes avctx->extradata straight to ff_hevc_decode_extradata, whose
+bytestream2_init asserts (av_assert0) on a NULL buffer — abort(), and the whole app with it. A
+transport stream opened mid-way can reach the decoder with no extradata at all: an Xtream catch-up
+archive of an HEVC channel (720p25) did, with "Could not find codec parameters for stream 0 (Video:
+hevc, none): unspecified size", and every open of it killed the app (SIGABRT in libavcodec,
+bytestream.h:141 via hevc/parse.c:86). The H.264 path does not abort: its parser returns EINVAL.
+
+With no extradata the decoder now opens without csd-0 — what this function already does when the
+extradata holds no parameter sets — and takes VPS/SPS/PPS from the stream, as every Annex B decoder
+does. Upstream master has the same code.
+
+Drop it once FFmpeg guards the call itself. Test: HEVC catch-up from the guide on mpv (opens, plays,
+no tombstone); HEVC live and a 4K HEVC HDR channel on mpv unchanged.
+
+diff --git a/libavcodec/mediacodecdec.c b/libavcodec/mediacodecdec.c
+--- a/libavcodec/mediacodecdec.c
++++ b/libavcodec/mediacodecdec.c
+@@ -225,6 +225,14 @@
+     int sps_data_size = 0;
+     int pps_data_size = 0;
+ 
++    /* No extradata (a transport stream joined mid-way, before any parameter sets): open without
++     * csd-0, as below when the extradata holds none, and let the decoder take VPS/SPS/PPS from the
++     * stream. The parser asserts on an empty buffer, which aborts the whole process. */
++    if (!avctx->extradata || avctx->extradata_size <= 0) {
++        av_log(avctx, AV_LOG_DEBUG, "No extradata, VPS/SPS/PPS are expected in the stream\n");
++        return 0;
++    }
++
+     ret = ff_hevc_decode_extradata(avctx->extradata, avctx->extradata_size,
+                                    &ps, &sei, &is_nalff, &nal_length_size, 0, 1, avctx);
+     if (ret < 0) {

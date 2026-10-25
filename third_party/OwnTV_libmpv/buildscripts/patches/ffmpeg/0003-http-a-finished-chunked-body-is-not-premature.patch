@@ -1,0 +1,32 @@
+OwnTV: a chunked HTTP body that ended with its last chunk is complete, not cut short.
+
+Why: a chunked response has no length, so FFmpeg's "premature end" test (`off < filesize`, with
+filesize unknown = UINT64_MAX) is true for every chunked body, including one that ended properly
+with its zero-size last chunk. With `reconnect_streamed=1` (OwnTV sets it for every stream, and
+mpv passes it on to each request the HLS demuxer makes), a chunked playlist is therefore read to
+its end, then fetched again from the start with growing waits (0, 1, 3, 7 s) until the reconnect
+budget runs out. Found on public Australian HLS channels (Akamai MediaPackage, chunked
+keep-alive playlists): mpv never opened them within its open timeout. FFmpeg master has the
+same test.
+
+`chunkend` is set only when the zero-size last chunk has been read, so a body that really stops
+mid-way still reconnects as before, and `reconnect_at_eof` (live raw TS) is a separate condition
+and unchanged.
+
+Drop it once FFmpeg checks `chunkend` in http_read_stream itself. Test: the AU channels open on
+mpv; a live raw-TS channel and an HLS IPTV channel still open and survive a network drop.
+
+diff --git a/libavformat/http.c b/libavformat/http.c
+--- a/libavformat/http.c
++++ b/libavformat/http.c
+@@ -1856,7 +1856,9 @@ retry:
+     read_ret = http_buf_read(h, buf, size);
+     while (read_ret < 0) {
+         uint64_t target = h->is_streamed ? 0 : s->off;
+-        bool is_premature = s->filesize > 0 && s->off < s->filesize;
++        /* A chunked body has no length; once its last chunk has arrived it is complete. */
++        bool is_premature = s->filesize > 0 && s->off < s->filesize &&
++                            !(s->chunksize != UINT64_MAX && s->chunkend);
+
+         if (read_ret == AVERROR_EXIT)
+             break;

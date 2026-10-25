@@ -1,0 +1,84 @@
+OwnTV: let the caller make the MediaCodec video decoder wait for the first keyframe.
+
+Why: a catch-up archive starts wherever the panel cut the recording, so the decoder's first
+packets are slices whose reference frames it never saw. The Realtek decoder (TCL, Android TV)
+stops dead on them: no input space, no output, until 0002's 3 s stall timeout fails it and mpv
+drops to software — about 3-4 s more to the first picture on H.264 catch-up, and once 24 s when the
+archive rescue then froze on the first frame.
+
+New option "wait_keyframe" (default off): after open and after every flush, packets are dropped
+until the first one flagged as a keyframe, at most 300 (about 6 s at 50 fps); past that the stream
+is fed as before, so a stream whose keyframes are not flagged still plays. Off, the decoder behaves
+exactly as without this patch. OwnTV sets it only for catch-up archives (vd-lavc-o).
+
+Test: H.264 and HEVC catch-up from the guide on mpv — hardware decoder from the first picture, no
+"MediaCodec stalled"; live TV and films unchanged (option not set).
+
+diff --git a/libavcodec/mediacodecdec.c b/libavcodec/mediacodecdec.c
+--- a/libavcodec/mediacodecdec.c
++++ b/libavcodec/mediacodecdec.c
+@@ -63,9 +63,20 @@
+ 
+     /* OwnTV: when the codec last stopped both taking input and giving output (0 = it is not). */
+     int64_t stalled_since;
++
++    /* OwnTV: drop packets until the first keyframe after open and after every flush (option). */
++    int wait_keyframe;
++    int keyframe_seen;
++    int keyframe_skipped;
+ } MediaCodecH264DecContext;
+ 
+ /*
++ * OwnTV: how many packets wait_keyframe drops at most before it feeds the stream anyway, so a
++ * stream whose keyframes are not flagged still plays (about 6 s at 50 fps).
++ */
++#define MEDIACODEC_KEYFRAME_WAIT_PACKETS 300
++
++/*
+  * OwnTV: how long the codec may refuse input and produce no output before decoding fails. Some
+  * vendor decoders (Realtek, seen on TCL Android TV) stop dead after the first frames of a stream;
+  * the "try again" loop below then never ends, and it runs on the player's core thread, so the whole
+@@ -598,6 +609,25 @@
+         } else if (ret < 0) {
+             return ret;
+         }
++
++        /* OwnTV: a stream joined mid-GOP (a catch-up archive starts wherever the panel cut it) hands
++         * the decoder slices whose references it never saw; the Realtek decoder stops dead on them
++         * and only the stall timeout above gets playback going again, in software. */
++        if (s->wait_keyframe && !s->keyframe_seen) {
++            if (s->buffered_pkt.flags & AV_PKT_FLAG_KEY) {
++                s->keyframe_seen = 1;
++                if (s->keyframe_skipped)
++                    av_log(avctx, AV_LOG_INFO, "Skipped %d packets before the first keyframe\n",
++                           s->keyframe_skipped);
++            } else if (s->keyframe_skipped < MEDIACODEC_KEYFRAME_WAIT_PACKETS) {
++                s->keyframe_skipped++;
++                av_packet_unref(&s->buffered_pkt);
++            } else {
++                s->keyframe_seen = 1;
++                av_log(avctx, AV_LOG_WARNING, "No keyframe in %d packets, decoding from here\n",
++                       s->keyframe_skipped);
++            }
++        }
+     }
+ 
+     return AVERROR(EAGAIN);
+@@ -609,6 +639,8 @@
+ 
+     av_packet_unref(&s->buffered_pkt);
+     s->stalled_since = 0;
++    s->keyframe_seen = 0;
++    s->keyframe_skipped = 0;
+ 
+     ff_mediacodec_dec_flush(avctx, s->ctx);
+ }
+@@ -635,6 +667,8 @@
+                    OFFSET(use_ndk_codec), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, VD },
+     { "operating_rate", "The desired operating rate that the codec will need to operate at, zero for unspecified",
+             OFFSET(operating_rate), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VD },
++    { "wait_keyframe", "Drop packets until the first keyframe after opening and after a flush",
++            OFFSET(wait_keyframe), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, VD },
+     { NULL }
+ };
+ 

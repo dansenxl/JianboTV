@@ -1,0 +1,38 @@
+OwnTV: open a MediaCodec video decoder that renders to a surface with max-width / max-height.
+
+Why: FFmpeg configures the decoder with mime, size and csd only. ExoPlayer and the platform players
+also pass max-width/max-height, which asks for adaptive playback. On the TCL (Realtek C2 AVC decoder)
+H.264 opened without them was set up in "native buffer" mode: its frames went through the GPU
+(SurfaceFlinger CLIENT composition, no video-plane session), and every H.264 channel above 30 fps
+was presented at exactly 30 fps on mpv (each frame held two refreshes) while mpv itself reported no
+drops. With them the decoder takes its direct video-out path (DVO, as under ExoPlayer and as HEVC
+already did): 1080p50 30.0 -> 50.0 fps, 1080p59.94 30.0 -> 57.8-59.2 fps.
+
+The keys are the documented MediaFormat ones every ExoPlayer session already sends on every device;
+a decoder without adaptive playback ignores them. Only with a surface (mpv's direct path): the copy
+path, which catch-up uses, opens exactly as before. At least 1920x1080, so an SD or 720p stream that
+steps up to HD mid-way stays within the declared maximum.
+
+Drop it once FFmpeg's decoder sets them itself. Test: H.264 1080p50/59.94, 720p50, SD, HEVC 4K HDR and
+a film on mpv — presented fps (SurfaceFlinger), the decoder's "DVO_ANB" port mode in logcat.
+
+diff --git a/libavcodec/mediacodecdec_common.c b/libavcodec/mediacodecdec_common.c
+index 9a627c0..e1b3050 100644
+--- a/libavcodec/mediacodecdec_common.c
++++ b/libavcodec/mediacodecdec_common.c
+@@ -847,6 +847,15 @@ int ff_mediacodec_dec_init(AVCodecContext *avctx, MediaCodecDecContext *s,
+     if (ret < 0)
+         goto fail;
+ 
++    if (avctx->codec_type == AVMEDIA_TYPE_VIDEO && s->surface) {
++        /* Adaptive playback, as the platform's own players open a decoder that renders to a
++         * surface: some decoders choose their direct output path from it and fall back to a slower
++         * one without it. At least 1080p, so a stream that steps up to HD mid-way stays within it;
++         * decoders without adaptive playback ignore the keys. */
++        ff_AMediaFormat_setInt32(format, "max-width", FFMAX(avctx->width, 1920));
++        ff_AMediaFormat_setInt32(format, "max-height", FFMAX(avctx->height, 1080));
++    }
++
+     status = ff_AMediaCodec_configure(s->codec, format, s->surface, NULL, 0);
+     if (status < 0) {
+         char *desc = ff_AMediaFormat_toString(format);

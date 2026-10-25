@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="content_guide_preview_placeholder">选中频道后按 OK 播放预览</string>
+    <string name="settings_mpv_deinterlace">MPV 反交错</string>
+    <string name="settings_mpv_deinterlace_description">“自动”仅处理检测为隔行的画面；“开启”会在支持的 MPV GPU 路径强制处理，也可能使逐行画面变软；“关闭”停用滤镜。直通硬件解码和 ExoPlayer 由设备处理。</string>
+    <string name="settings_mpv_deinterlace_auto">自动</string>
+    <string name="settings_mpv_deinterlace_on">开启</string>
+    <string name="settings_mpv_deinterlace_off">关闭</string>
+    <string name="content_exit_owntv">退出简播 TV？</string>
+    <string name="content_exit_confirmation">确定退出应用吗？</string>
+    <string name="exit_dialog_cancel">取消</string>
+    <string name="exit_dialog_exit">退出</string>
+    <string name="app_name">简播 TV</string>
+    <string name="content_search_channels">搜索频道…</string>
+    <string name="content_search_movies">搜索电影…</string>
+    <string name="content_search_series">搜索剧集…</string>
+</resources>

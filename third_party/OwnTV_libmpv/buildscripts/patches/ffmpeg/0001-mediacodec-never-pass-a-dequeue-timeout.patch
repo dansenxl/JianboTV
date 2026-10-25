@@ -1,0 +1,74 @@
+OwnTV: never hand MediaCodec a dequeue timeout; wait in FFmpeg instead.
+
+Why: on the TCL TV (Realtek c2.realtek.video.avc.decoder, Android 14) catch-up on the copy path
+(hwdec=mediacodec-copy) froze on the first frame. Native stacks of the stuck player (debuggable
+build + lldb, 2026-10-08) showed mpv's core thread inside MediaCodec::dequeueOutputBuffer, waiting
+on a reply the codec never sent, not even after its timeout - with the player's lock held, so
+every later command and the destroy waited behind it.
+
+A timeout-0 call is answered at once, so this asks with 0 and does the wait here, in 1 ms sleeps,
+for the same total time the caller asked for. On its own it does not end the freeze (the decoder
+still stops producing output; see 0002) - it makes the call return, so 0002 can act.
+
+It stays on the direct (surface) path too: measured 2026-10-19 against an engine without it, the
+polling costs no CPU and no frames there, and the same stall (0002's "MediaCodec stalled") was also
+seen on the direct path on the TCL.
+
+Drop it only together with 0002, and only once FFmpeg bounds the receive loop itself.
+Test: 10+ catch-up opens of an NPO 1 programme (Stalker, Junior) on the TCL, no freeze.
+
+diff --git a/libavcodec/mediacodec_wrapper.h b/libavcodec/mediacodec_wrapper.h
+index 18d0796..25a3e52 100644
+--- a/libavcodec/mediacodec_wrapper.h
++++ b/libavcodec/mediacodec_wrapper.h
+@@ -27,6 +27,7 @@
+ #include <sys/types.h>
+ 
+ #include "avcodec.h"
++#include "libavutil/time.h"
+ #include "mediacodec_surface.h"
+ 
+ /**
+@@ -289,9 +290,25 @@ static inline uint8_t* ff_AMediaCodec_getOutputBuffer(FFAMediaCodec* codec, size
+     return codec->getOutputBuffer(codec, idx, out_size);
+ }
+ 
++/*
++ * OwnTV: never hand MediaCodec a dequeue timeout. Some vendor MediaCodec builds (Realtek, seen on
++ * TCL Android TV) lose a dequeue request that is left waiting inside the codec: the reply never
++ * comes and the calling thread blocks forever, holding the player's lock. Asking with timeout 0 is
++ * always answered at once, so the wait is done here instead, in short sleeps, for the same total
++ * time the caller asked for.
++ */
++#define FF_MEDIACODEC_POLL_US 1000
++
+ static inline ssize_t ff_AMediaCodec_dequeueInputBuffer(FFAMediaCodec* codec, int64_t timeoutUs)
+ {
+-    return codec->dequeueInputBuffer(codec, timeoutUs);
++    int64_t deadline = timeoutUs > 0 ? av_gettime_relative() + timeoutUs : 0;
++    for (;;) {
++        ssize_t idx = codec->dequeueInputBuffer(codec, 0);
++        int64_t left = deadline - av_gettime_relative();
++        if (timeoutUs <= 0 || !codec->infoTryAgainLater(codec, idx) || left <= 0)
++            return idx;
++        av_usleep(FFMIN(left, FF_MEDIACODEC_POLL_US));
++    }
+ }
+ 
+ static inline int ff_AMediaCodec_queueInputBuffer(FFAMediaCodec *codec, size_t idx, off_t offset, size_t size, uint64_t time, uint32_t flags)
+@@ -301,7 +318,14 @@ static inline int ff_AMediaCodec_queueInputBuffer(FFAMediaCodec *codec, size_t i
+ 
+ static inline ssize_t ff_AMediaCodec_dequeueOutputBuffer(FFAMediaCodec* codec, FFAMediaCodecBufferInfo *info, int64_t timeoutUs)
+ {
+-    return codec->dequeueOutputBuffer(codec, info, timeoutUs);
++    int64_t deadline = timeoutUs > 0 ? av_gettime_relative() + timeoutUs : 0;
++    for (;;) {
++        ssize_t idx = codec->dequeueOutputBuffer(codec, info, 0);
++        int64_t left = deadline - av_gettime_relative();
++        if (timeoutUs <= 0 || !codec->infoTryAgainLater(codec, idx) || left <= 0)
++            return idx;
++        av_usleep(FFMIN(left, FF_MEDIACODEC_POLL_US));
++    }
+ }
+ 
+ static inline FFAMediaFormat* ff_AMediaCodec_getOutputFormat(FFAMediaCodec* codec)

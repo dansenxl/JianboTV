@@ -1,0 +1,139 @@
+OwnTV: estimated-vf-fps from the frames' own timestamp gaps when nothing else gives it.
+
+Why: vo_mediacodec_embed (mpv's direct MediaCodec path, where OwnTV plays films) has VO_CAP_NORETAIN,
+so use_video_lookahead() is false and only one frame is queued. calculate_frame_duration then has no
+pair of next-frame timestamps and falls back to the container fps; a file that states none (a
+Matroska file without DefaultDuration) leaves every frame duration at -1 and estimated-vf-fps
+unavailable for the whole playback. OwnTV reads that property to give Auto frame rate a rate when
+the container has none, so such films never switched the display mode on mpv (ExoPlayer measures
+them). Found 2026-10-20 on the TCL: an .mkv episode presented a steady 24.00 fps (SurfaceFlinger)
+while container-fps, demux-fps and estimated-vf-fps all read null.
+
+handle_new_frame already computes each frame's timestamp gap; it is now kept in a 32-entry ring
+(only gaps above 0 and under 0.5 s; cleared on a timestamp discontinuity and in reset_video_state,
+so a seek or a new file starts over). estimated-vf-fps uses the mean of the gaps within rounding distance of their median —
+the median drops outliers, averaging every gap near it undoes 1 ms rounding (a fixed trim off each
+end biased a 41/42 ms mix: 23.88 instead of 23.976) — only when calc_average_frame_duration has
+nothing. Nothing else reads the ring: playback timing, frame dropping and display sync are unchanged.
+
+Drop it once mpv estimates the frame rate without lookahead. Test: an .mkv with no frame rate on
+mpv direct -> estimated-vf-fps ~23.976/24; a film with a container fps and live channels unchanged.
+
+Traceback (most recent call last):
+  File "<stdin>", line 26, in <module>
+  File "<stdin>", line 3, in edit
+AssertionError: ('player/video.c', '    mpctx->num_past_frames = 0;\n    mpctx->total_avsync_change = 0;\n')
+diff --git a/player/core.h b/player/core.h
+--- a/player/core.h
++++ b/player/core.h
+@@ -396,6 +396,11 @@
+     struct frame_info *past_frames;
+     int num_past_frames;
+ 
++    // OwnTV: the last gaps between the presentation timestamps of displayed
++    // frames, as a ring; only estimated-vf-fps reads them.
++    double frame_gaps[32];
++    int num_frame_gaps, frame_gap_pos;
++
+     double last_idle_tick;
+     double next_cache_update;
+ 
+@@ -695,5 +700,6 @@
+ void uninit_video_out(struct MPContext *mpctx);
+ void uninit_video_chain(struct MPContext *mpctx);
+ double calc_average_frame_duration(struct MPContext *mpctx);
++double calc_trimmed_frame_gap(struct MPContext *mpctx);
+ 
+ #endif /* MPLAYER_MP_CORE_H */
+diff --git a/player/video.c b/player/video.c
+--- a/player/video.c
++++ b/player/video.c
+@@ -19,6 +19,8 @@
+ #include <stdbool.h>
+ #include <inttypes.h>
+ #include <math.h>
++#include <stdlib.h>
++#include <string.h>
+ #include <assert.h>
+ 
+ #include "mpv_talloc.h"
+@@ -115,6 +117,8 @@
+     mpctx->video_pts = MP_NOPTS_VALUE;
+     mpctx->last_frame_duration = 0;
+     mpctx->num_past_frames = 0;
++    mpctx->num_frame_gaps = 0;
++    mpctx->frame_gap_pos = 0;
+     mpctx->total_avsync_change = 0;
+     mpctx->last_av_difference = 0;
+     mpctx->mistimed_frames_total = 0;
+@@ -395,8 +399,18 @@
+             MP_WARN(mpctx, "Invalid video timestamp: %f -> %f\n",
+                     mpctx->video_pts, pts);
+             frame_time = 0;
++            mpctx->num_frame_gaps = 0;
+         }
+     }
++    // OwnTV: a VO that cannot retain frames (mediacodec_embed) gets no lookahead,
++    // so calculate_frame_duration has no frame duration when the container states
++    // no fps, and estimated-vf-fps stays unavailable. Keep the real gaps for it.
++    if (frame_time > 0 && frame_time < 0.5 && !is_sparse) {
++        mpctx->frame_gaps[mpctx->frame_gap_pos] = frame_time;
++        mpctx->frame_gap_pos = (mpctx->frame_gap_pos + 1) % MP_ARRAY_SIZE(mpctx->frame_gaps);
++        if (mpctx->num_frame_gaps < MP_ARRAY_SIZE(mpctx->frame_gaps))
++            mpctx->num_frame_gaps++;
++    }
+     mpctx->time_frame += frame_time / mpctx->video_speed;
+     if (mpctx->ao_chain && !mpctx->ao_chain->delaying_audio_start)
+         mpctx->delay -= frame_time;
+@@ -688,6 +702,37 @@
+     return num > 0 ? total / num : 0;
+ }
+ 
++static int cmp_double(const void *a, const void *b)
++{
++    double x = *(const double *)a, y = *(const double *)b;
++    return x < y ? -1 : x > y;
++}
++
++// OwnTV: the mean of the recorded frame gaps that lie within rounding distance of
++// their median, or 0 with too few. The median drops outliers; averaging every
++// gap near it undoes 1 ms timestamp rounding (a 23.976 fps Matroska file mixes
++// 41 and 42 ms gaps, and cutting a fixed share off each end would bias that).
++double calc_trimmed_frame_gap(struct MPContext *mpctx)
++{
++    int num = mpctx->num_frame_gaps;
++    if (num < 8)
++        return 0;
++    double gaps[MP_ARRAY_SIZE(mpctx->frame_gaps)];
++    memcpy(gaps, mpctx->frame_gaps, num * sizeof(gaps[0]));
++    qsort(gaps, num, sizeof(gaps[0]), cmp_double);
++    double median = gaps[num / 2];
++    double tolerance = 0.001 * 3 + 0.0001; // as calculate_frame_duration
++    double total = 0;
++    int used = 0;
++    for (int n = 0; n < num; n++) {
++        if (fabs(gaps[n] - median) <= tolerance) {
++            total += gaps[n];
++            used++;
++        }
++    }
++    return used >= num / 2 ? total / used : 0;
++}
++
+ // Find a speed factor such that the display FPS is an integer multiple of the
+ // effective video FPS. If this is not possible, try to do it for multiples,
+ // which still leads to an improved end result.
+diff --git a/player/command.c b/player/command.c
+--- a/player/command.c
++++ b/player/command.c
+@@ -3373,6 +3373,10 @@
+     if (!mpctx->vo_chain)
+         return M_PROPERTY_UNAVAILABLE;
+     double avg = calc_average_frame_duration(mpctx);
++    // OwnTV: without lookahead and without a container fps there are no frame
++    // durations; fall back to the measured timestamp gaps.
++    if (avg <= 0)
++        avg = calc_trimmed_frame_gap(mpctx);
+     if (avg <= 0)
+         return M_PROPERTY_UNAVAILABLE;
+     return m_property_double_ro(action, arg, 1.0 / avg);

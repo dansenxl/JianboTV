@@ -1,0 +1,29 @@
+OwnTV: stop ao_audiotrack spinning on an audio underrun.
+
+While the AudioTrack is playing, ao_thread reads audio and writes it with a blocking write, which is
+what paces the loop. When ao_read_data has nothing yet (an underrun: "Audio device underrun
+detected"), it writes zero bytes, which returns at once, and the loop re-runs immediately: the
+thread burns a whole CPU core until audio arrives. Now a zero-sample read waits 10 ms on p->wakeup.
+
+Found on the TCL, 2026-10-07, while chasing a catch-up that froze on its first frame: /proc showed
+`ao/audiotrack` in state R gaining ~140 ticks/s. The spin is real but was NOT that freeze's cause
+(p->lock is shared only with uninit, so it starved nothing; the freeze was a stalled Realtek
+MediaCodec decoder, fixed by patches/ffmpeg/0001 and 0002). Upstream master still has the loop unchanged, so drop this patch only
+once ao_thread waits on a zero-sample read itself.
+
+diff --git a/audio/out/ao_audiotrack.c b/audio/out/ao_audiotrack.c
+index f483ccc..c287337 100644
+--- a/audio/out/ao_audiotrack.c
++++ b/audio/out/ao_audiotrack.c
+@@ -584,6 +584,11 @@ static MP_THREAD_VOID ao_thread(void *arg)
+             ts += MP_TIME_S_TO_NS(read_samples / (double)(ao->samplerate));
+             ts += MP_TIME_S_TO_NS(AudioTrack_getLatency(ao));
+             int samples = ao_read_data(ao, &p->chunk, read_samples, ts, NULL, false, false);
++            if (samples <= 0) {
++                // Nothing to play yet (underrun): wait instead of spinning with p->lock held.
++                mp_cond_timedwait(&p->wakeup, &p->lock, MP_TIME_MS_TO_NS(10));
++                continue;
++            }
+             int ret = AudioTrack_write(ao, samples * ao->sstride);
+             if (ret >= 0) {
+                 p->written_frames += ret / ao->sstride;
