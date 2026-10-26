@@ -107,7 +107,7 @@ import tv.own.owntv.ui.theme.primary
 
 internal enum class TileTone { PRIMARY, SECONDARY, TERTIARY }
 
-private enum class SettingsTab { ROOT, LANGUAGE, SOURCES, EPG, BACKUP, LOCAL_SYNC, CUSTOMIZE, HOME, NETWORK, DNS, METADATA, OPEN_SUBTITLES, WEATHER, CH_NAV, PANEL_WIDTH, GUIDE_WIDTH, GLASS_EFFECT, CONTENT_MENUS, FONTS, BROWSING, SUBTITLE_STYLE, SPORTS }
+private enum class SettingsTab { ROOT, HUB, PLAYBACK, UPDATE, ABOUT, LANGUAGE, SOURCES, EPG, BACKUP, LOCAL_SYNC, CUSTOMIZE, HOME, NETWORK, DNS, METADATA, OPEN_SUBTITLES, WEATHER, CH_NAV, PANEL_WIDTH, GUIDE_WIDTH, GLASS_EFFECT, CONTENT_MENUS, FONTS, BROWSING, SUBTITLE_STYLE, SPORTS }
 
 @Composable
 internal fun surroundModeLabel(mode: SurroundMode): String = stringResource(
@@ -170,7 +170,8 @@ fun SettingsScreen(
     // A cross-script language change recreates the Activity so Android can apply the new script's
     // shaping and font fallback. Keep the open settings sub-screen across that configuration change
     // instead of dropping back to the Settings root/sidebar.
-    var tab by rememberSaveable { mutableStateOf(SettingsTab.ROOT) }
+    var tab by rememberSaveable { mutableStateOf(if (start?.hub == true) SettingsTab.HUB else SettingsTab.ROOT) }
+    var compactHub by rememberSaveable { mutableStateOf(start?.hub == true) }
     // Deep-link from the Guide's "Add EPG" button: jump straight to EPG Sources in add mode.
     var consumeEpgAdd by remember { mutableStateOf(false) }
     var showZoom by remember { mutableStateOf(false) }
@@ -258,7 +259,8 @@ fun SettingsScreen(
     LaunchedEffect(searchAutoEdit) { if (searchAutoEdit) { kotlinx.coroutines.delay(1000); searchAutoEdit = false } }
     LaunchedEffect(start) {
         if (start == null) return@LaunchedEffect
-        tab = SettingsTab.ROOT
+        compactHub = start.hub
+        tab = if (start.hub) SettingsTab.HUB else SettingsTab.ROOT
         start.group?.let { selectedGroup = it; displayedGroup = it }
         if (start.search) {
             searchMode = true
@@ -408,12 +410,39 @@ fun SettingsScreen(
     val sub = modifier.padding(start = 6.dp, end = 6.dp, bottom = 6.dp, top = StageContentTop)
     // A full page's search hands over to Settings search, keyboard up.
     val openSearch: () -> Unit = { lastTab = null; searchQuery = ""; searchMode = true; searchFromMore = false; searchAutoEdit = true; tab = SettingsTab.ROOT }
+    val returnFromCompactPage: () -> Unit = { tab = if (compactHub) SettingsTab.HUB else SettingsTab.ROOT }
+    if (tab == SettingsTab.HUB) {
+        BackHandler { onBack?.invoke() }
+        JianboSettingsHub { destination ->
+            tab = when (destination) {
+                JianboSettingsDestination.PLAYLISTS -> SettingsTab.SOURCES
+                JianboSettingsDestination.EPG -> SettingsTab.EPG
+                JianboSettingsDestination.PLAYBACK -> SettingsTab.PLAYBACK
+                JianboSettingsDestination.UPDATE -> SettingsTab.UPDATE
+                JianboSettingsDestination.ABOUT -> SettingsTab.ABOUT
+            }
+        }
+        return
+    }
     if (tab != SettingsTab.ROOT) {
     CompositionLocalProvider(tv.own.owntv.features.settings.LocalSettingsSearch provides openSearch) {
     when (tab) {
         SettingsTab.LANGUAGE -> { LanguageSettingsScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier) }
-        SettingsTab.SOURCES -> { ManageSourcesScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier, startOnAdd = consumePlaylistAdd) }
-        SettingsTab.EPG -> { tv.own.owntv.features.settings.EpgSourcesScreen(onBack = { tab = SettingsTab.ROOT; consumeEpgAdd = false }, modifier = modifier, startOnAdd = consumeEpgAdd) }
+        SettingsTab.SOURCES -> { ManageSourcesScreen(onBack = returnFromCompactPage, modifier = modifier, startOnAdd = consumePlaylistAdd) }
+        SettingsTab.EPG -> { tv.own.owntv.features.settings.EpgSourcesScreen(onBack = { returnFromCompactPage(); consumeEpgAdd = false }, modifier = modifier, startOnAdd = consumeEpgAdd) }
+        SettingsTab.PLAYBACK -> {
+            BackHandler { returnFromCompactPage() }
+            JianboPlaybackSettingsPage()
+        }
+        SettingsTab.UPDATE -> {
+            BackHandler { returnFromCompactPage() }
+            JianboUpdateSettingsPage()
+        }
+        SettingsTab.ABOUT -> {
+            BackHandler { returnFromCompactPage() }
+            JianboAboutPage()
+        }
+        SettingsTab.HUB -> Unit
         SettingsTab.BACKUP -> { BackupScreen(onBack = { tab = SettingsTab.ROOT }, modifier = sub) }
         SettingsTab.LOCAL_SYNC -> { LocalSyncScreen(onBack = { tab = SettingsTab.ROOT }, modifier = sub) }
         SettingsTab.CUSTOMIZE -> { CustomizeScreen(onBack = { tab = SettingsTab.ROOT }, modifier = modifier) }
@@ -854,7 +883,9 @@ fun SettingsScreen(
         val byKey = sliced.flatMap { it.second }.associateBy { it.key }
         sliced.map { (group, rows) ->
             if (group.key == "group_quick") {
-                group to quickPinned.mapNotNull { byKey[it] ?: videoDeepRows[it] }
+                // This Jianbo TV build is an IPTV client: keep old pin data intact for upgrade
+                // compatibility, but do not surface the unrelated series autoplay option.
+                group to quickPinned.filterNot { it == "quick_autoplay" }.mapNotNull { byKey[it] ?: videoDeepRows[it] }
             } else {
                 group to rows
             }
@@ -2052,7 +2083,7 @@ private fun CatchupSourcesHost(
 }
 
 /** More's way into this screen: a root group to open at, or the search field. */
-data class SettingsStart(val group: Int?, val search: Boolean)
+data class SettingsStart(val group: Int?, val search: Boolean, val hub: Boolean = false)
 
 /** One playlist's catch-up time zone, moved out of [SettingsScreen] unchanged (its body is at the JVM method limit). */
 @Composable

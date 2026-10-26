@@ -29,6 +29,8 @@ class SettingsBackupCoverageTest {
         "last_backup_at", "last_backup_bytes", "last_backup_encrypted", "last_backup_path",
         // When this device last asked for an update: restoring it elsewhere would claim a check that never ran.
         "last_update_check_at",
+        // Result of this device's own most recent update check; it is not portable user configuration.
+        "last_update_check_result",
         // Postponing a release is per-install UI state, not a user setting to restore elsewhere.
         "deferred_update_version",
         // A Room channel id — meaningless after the next sync.

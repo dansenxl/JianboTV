@@ -2967,6 +2967,7 @@
 1	preference-key	core/src/main/java/tv/own/owntv/core/settings/SettingsRepository.kt	last_movies_category
 1	preference-key	core/src/main/java/tv/own/owntv/core/settings/SettingsRepository.kt	last_series_category
 1	preference-key	core/src/main/java/tv/own/owntv/core/settings/SettingsRepository.kt	last_update_check_at
+1	preference-key	core/src/main/java/tv/own/owntv/core/settings/SettingsRepository.kt	last_update_check_result
 1	preference-key	core/src/main/java/tv/own/owntv/core/settings/SettingsRepository.kt	live_engine
 1	preference-key	core/src/main/java/tv/own/owntv/core/settings/SettingsRepository.kt	live_latency_custom_secs
 1	preference-key	core/src/main/java/tv/own/owntv/core/settings/SettingsRepository.kt	live_latency_mode
@@ -5142,12 +5143,14 @@
 1	regex	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	[0-9a-f]{64}
 1	mime	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	application/vnd.github+json
 1	json	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	assets
+1	preference-key	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	available:
 2	json	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	body
 2	json	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	browser_download_url
 1	technical	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	dansenxl/JianboTV
 1	json	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	digest
 3	technical	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	download cancelled
 1	json	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	draft
+1	preference-key	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	failed
 1	url	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	github.com
 1	url	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	https://api.github.com/repos/$REPOSITORY/releases/latest
 1	url	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	https://github.com/$REPOSITORY/releases/download/$tag/$apkName
@@ -5164,6 +5167,7 @@
 1	json	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	tag_name
 1	protocol	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	tv.jianbo.tv
 1	protocol	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	tv.jianbo.tv.UPDATE_INSTALL_STATUS
+1	preference-key	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	up_to_date
 1	log	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	update check failed: ${error.javaClass.simpleName}
 1	log	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	update download failed: ${e.javaClass.simpleName}
 1	file-path	core/src/main/java/tv/own/owntv/core/update/UpdateManager.kt	updates/${info.apkName}

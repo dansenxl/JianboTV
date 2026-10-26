@@ -663,8 +663,9 @@ class SettingsRepository(private val context: Context, private val localeStore: 
         val LAST_BACKUP_ENCRYPTED = booleanPreferencesKey("last_backup_encrypted")
         val LAST_BACKUP_PATH = stringPreferencesKey("last_backup_path")
 
-        // When an update check last got an answer from GitHub (About's "Checked today, 20:12").
+        // Time of the last check attempt; the result is persisted separately below.
         val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
+        val LAST_UPDATE_CHECK_RESULT = stringPreferencesKey("last_update_check_result")
         val DEFERRED_UPDATE_VERSION = stringPreferencesKey("deferred_update_version")
     }
 
@@ -702,6 +703,9 @@ class SettingsRepository(private val context: Context, private val localeStore: 
     /** The most recent update check attempt; `null` until the app checks for the first time. */
     val lastUpdateCheckAt: Flow<Long?> = prefsFlow { it[Keys.LAST_UPDATE_CHECK_AT]?.takeIf { at -> at > 0 } }
 
+    /** The last completed update check: `up_to_date`, `available:<version>`, or `failed`. */
+    val lastUpdateCheckResult: Flow<String?> = prefsFlow { it[Keys.LAST_UPDATE_CHECK_RESULT] }
+
     /** Release tag the user chose to postpone from the startup update prompt. */
     val deferredUpdateVersion: Flow<String?> = prefsFlow { it[Keys.DEFERRED_UPDATE_VERSION] }
 
@@ -715,6 +719,10 @@ class SettingsRepository(private val context: Context, private val localeStore: 
     /** Called by [tv.own.owntv.core.update.UpdateManager] before each request to throttle startup retries. */
     suspend fun recordUpdateCheck(at: Long) {
         context.dataStore.edit { it[Keys.LAST_UPDATE_CHECK_AT] = at }
+    }
+
+    suspend fun recordUpdateCheckResult(result: String) {
+        context.dataStore.edit { it[Keys.LAST_UPDATE_CHECK_RESULT] = result }
     }
 
     // --- Live TV: remember the last focused channel so reopening lands focus back on it ---

@@ -1279,7 +1279,11 @@ fun OwnTVShell(
                             liveMode = true,
                             onEntryHook = { guideEntry = it },
                             onListView = { liveVm.setLiveView(tv.own.owntv.core.settings.SettingsRepository.LiveView.LIST) },
-                            onSelectSettings = { restoreFocus = true; onSelectSection(MainSection.SETTINGS) },
+                            onSelectSettings = {
+                                settingsStart = tv.own.owntv.features.shell.components.SettingsStart(null, false, hub = true)
+                                restoreFocus = true
+                                onSelectSection(MainSection.SETTINGS)
+                            },
                             restoreFocus = restoreFocus,
                             onRestored = { restoreFocus = false },
                             modifier = Modifier

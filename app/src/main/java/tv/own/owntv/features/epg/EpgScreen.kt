@@ -480,6 +480,7 @@ fun EpgScreen(
                 Modifier.weight(1f)
                     .focusProperties { onEnter = { runCatching { categoryEntryRequester.requestFocus() } } }
                     .focusGroup(),
+                contentPadding = PaddingValues(horizontal = 8.mpx),
                 horizontalArrangement = Arrangement.spacedBy(8.mpx),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

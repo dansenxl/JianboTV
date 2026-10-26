@@ -37,7 +37,9 @@ class SettingsSearchCoverageTest {
      * Tabs deliberately absent from search. Backup and Local sync live under ⋯ More, not Settings, and
      * the code says so: a result that lands somewhere the row is not is worse than no result.
      */
-    private val notSearchable = setOf("ROOT", "BACKUP", "LOCAL_SYNC")
+    // Jianbo TV's direct IPTV settings hub and its app-specific pages are visible by navigation,
+    // so requiring them to appear in the inherited OwnTV search would be misleading.
+    private val notSearchable = setOf("ROOT", "HUB", "PLAYBACK", "UPDATE", "ABOUT", "BACKUP", "LOCAL_SYNC")
 
     @Test
     fun `every settings screen can be found by search`() {

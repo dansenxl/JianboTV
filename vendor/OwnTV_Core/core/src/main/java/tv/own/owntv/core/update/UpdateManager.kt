@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -77,9 +78,24 @@ class UpdateManager(
         data class Failed(val failure: Failure, val retryInfo: UpdateInfo? = null) : State
     }
 
+    sealed interface LastCheckResult {
+        data object Unknown : LastCheckResult
+        data object UpToDate : LastCheckResult
+        data class Available(val version: String) : LastCheckResult
+        data object Failed : LastCheckResult
+    }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
+    val lastCheckResult = settings.lastUpdateCheckResult.map { stored ->
+        when {
+            stored == CHECK_UP_TO_DATE -> LastCheckResult.UpToDate
+            stored?.startsWith(CHECK_AVAILABLE_PREFIX) == true -> LastCheckResult.Available(stored.removePrefix(CHECK_AVAILABLE_PREFIX))
+            stored == CHECK_FAILED -> LastCheckResult.Failed
+            else -> LastCheckResult.Unknown
+        }
+    }
     private val activeCall = AtomicReference<okhttp3.Call?>(null)
     private val cancelledDownload = AtomicBoolean(false)
     private val downloadInProgress = AtomicBoolean(false)
@@ -123,7 +139,7 @@ class UpdateManager(
         if (_state.value is State.Checking || _state.value is State.Downloading) return
         _state.value = State.Checking
         scope.launch {
-            runCatching {
+            try {
                 settings.recordUpdateCheck(System.currentTimeMillis())
                 val request = Request.Builder()
                     .url("https://api.github.com/repos/$REPOSITORY/releases/latest")
@@ -171,14 +187,19 @@ class UpdateManager(
                     }
                     val info = UpdateInfo(version, versionCode, json.optString("body").take(MAX_RELEASE_NOTES), expectedUrl, apkName, digest, size)
                     val deferred = settings.deferredUpdateVersion.first()
-                    _state.value = if (versionCode > currentVersionCode && !(automatic && deferred == tag)) {
+                    val result = if (versionCode > currentVersionCode && !(automatic && deferred == tag)) {
                         State.Available(info)
                     } else {
                         State.UpToDate
                     }
+                    settings.recordUpdateCheckResult(
+                        if (result is State.Available) CHECK_AVAILABLE_PREFIX + result.info.version else CHECK_UP_TO_DATE,
+                    )
+                    _state.value = result
                 }
-            }.onFailure { error ->
+            } catch (error: Throwable) {
                 if (error is CancellationException) throw error
+                settings.recordUpdateCheckResult(CHECK_FAILED)
                 Log.w(TAG, "update check failed: ${error.javaClass.simpleName}")
                 _state.value = State.Failed(failureFor(error, checking = true))
             }
@@ -382,6 +403,9 @@ class UpdateManager(
 
     companion object {
         private const val TAG = "UpdateManager"
+        private const val CHECK_UP_TO_DATE = "up_to_date"
+        private const val CHECK_AVAILABLE_PREFIX = "available:"
+        private const val CHECK_FAILED = "failed"
         private const val USER_AGENT = "JianboTV-Android-TV"
         private const val REPOSITORY = "dansenxl/JianboTV"
         private const val SESSION_ENTRY = "jianbotv-update"
